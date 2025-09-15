@@ -49,7 +49,7 @@ def msg_info(txt: str):                 print(f"{BOLD}{txt}{RESET}")
 
 # ----------------------- Banner / Título --------------------------
 def print_banner(show: bool = True):
-    if not show:
+    if not show: 
         return
     art = r"""
  ____    _    ____ _  _______ ___  _   _    _    ____ _  __
@@ -106,10 +106,6 @@ _archive_ct_re = re.compile(
     r"application/(zip|x-zip-compressed|x-rar|x-rar-compressed|x-7z-compressed|octet-stream)",
     re.I,
 )
-
-# Para extraer el tamaño total de Content-Range: "bytes start-end/TOTAL"
-_crange_total_re = re.compile(r"bytes\s+\d+-\d+/(\d+|\*)", re.I)
-
 def is_archive_by_headers(ctype: str, cdisp: str) -> bool:
     ctype = (ctype or "").strip()
     cdisp = (cdisp or "").strip()
@@ -147,32 +143,17 @@ async def resolve_scheme(client: httpx.AsyncClient, host: str) -> Optional[str]:
 
 async def probe_url(client: httpx.AsyncClient, url: str) -> Tuple[str, int, str, str, str, bytes]:
     """
-    Devuelve: (final_url, status_code, content_type, content_length_total, content_disp, body512)
-    Nota: content_length_total intenta ser el tamaño TOTAL del archivo.
-    Con 206, se extrae de Content-Range (bytes start-end/TOTAL).
-    Con 200, se usa Content-Length si está disponible.
+    Devuelve: (final_url, status_code, content_type, content_length, content_disp, body512)
     """
     try:
         r = await client.get(url, headers={"Range": "bytes=0-511"})
         final_url = str(r.url)
         code = r.status_code
         ctype = r.headers.get("Content-Type", "")
+        clen = r.headers.get("Content-Length", "")
         cdisp = r.headers.get("Content-Disposition", "")
-
-        # Calcula el tamaño TOTAL del recurso (no el del rango)
-        clen_header = r.headers.get("Content-Length", "")
-        crange = r.headers.get("Content-Range", "")
-        total_size = ""
-
-        if code == 206 and crange:
-            m = _crange_total_re.search(crange)
-            if m and m.group(1).isdigit():
-                total_size = m.group(1)
-        elif code == 200 and clen_header.isdigit():
-            total_size = clen_header  # respuesta completa sin rango
-
         body = r.content or b""
-        return final_url, code, ctype, total_size, cdisp, body
+        return final_url, code, ctype, clen, cdisp, body
     except httpx.HTTPError:
         # Simetría con Bash: devolver “código 0”
         return url, 0, "", "", "", b""
